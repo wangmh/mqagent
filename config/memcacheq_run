@@ -1,0 +1,10 @@
+memcacheq -d -r -H /home/saint/memcacheq_22201 -N -R -v -L 1024 -B 1024 -u root -p 22201 > /home/saint/memcacheq_22201/mq_error.log 2>&1
+
+
+memcacheq -d -r -H /home/saint/memcacheq_22202 -N -R -v -L 1024 -B 1024 -u root -p 22202 > /home/saint/memcacheq_22202/mq_error.log 2>&1
+
+memcacheq -d -r -H /home/saint/memcacheq_22203 -N -R -v -L 1024 -B 1024 -u root -p 22203 > /home/saint/memcacheq_22203/mq_error.log 2>&1
+
+
+memcacheq -d -r -H /home/saint/memcacheq_22204 -N -R -v -L 1024 -B 1024 -u root -p 22204 > /home/saint/memcacheq_22204/mq_error.log 2>&1 
+

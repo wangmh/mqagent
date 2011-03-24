@@ -1,0 +1,130 @@
+
+
+ 
+1 Mqagent的用途
+Mqagent是为了适应分布式memcachq的需求，在magent基础上进行二次开发形成，因为其时专门为memcacheq服务的，因此我命名为mqagent。
+其作为代理层，隔离了开发者和后端的多个memcachq server，使得后端对开发者透明，开发人员只需要和代理层，依据memcache的协议进行消息队列的get/set操作即可。
+
+
+2 Mqagent使用流程
+1、开发者申请一个消息队列名称，例如msg_deliver_email, 该消息队列主要用来处理异步发送邮件。
+2、mqagent的维护者，需要根据开发者申请的消息队列的名称配置使用的后端的memcacheq的服务器的地址。例如：下面代码是mqagent配置文件中的【tasks】部分，主要配置 消息队列的名称和后端memcachq之间的映射关系。
+	
+[tasks]
+sync_pre_process = 127.0.0.1:22201,127.0.0.1:22203
+advance_sync_pre_process = 127.0.0.1:22201,127.0.0.1:22203
+msg_deliver_email = 127.0.0.1:22024
+此时kill -1 xxx, xxx为mqagent的pid号码，这样就可以reload新的配置了。
+3、设置完成后，mqagent维护者返回给开发者配置好的mqagent的地址和端口号，及消息队列名称，二者基于下面介绍的协议就可以通信了。
+
+3 Mqagent协议的设计
+总体来说mqagent协议是基于memcache协议的，针对项目中的一些特殊需求，比如针对某个jid的消息队列需要保持时序的一致性。
+因此我们对set协议进行了修改。
+3.1 Set协议
+<command name> <key> <flags> <exptime> <bytes>\r\n <data block>\r\n
+- <command name> 是 set
+    * set 意思是 “储存此数据”，这里是队列的push操作。
+- <key> 是接下来的客户端所要求储存的数据的键值。
+- <flags> 是在取回内容时，与数据和发送块一同保存服务器上的任意16位无符号整形（用十进制来书写）。客户端可以用它作为“位域”来存储一些特定的信息；它对服务器是不透明的。
+	- <bytes> 是随后的数据区块的字节长度，不包括用于分野的“\r\n”。它可以是0（这时后面跟随一个空的数据区块）。
+在这一行以后，客户端发送数据区块。	
+<data block>\r\n
+我们对set的key做了一个适配，既能支持无特殊要求时序性的队列，比如GSM的业务，也能支持对连接分析中需要保持某jid的操作的一致性。
+<key>分解为<task_name/jid>
+其中task_name为队列的名称。
+jid为保持该jid的一致性 即为该jid的所有消息都放到该消息队列中。
+
+3.2 Get协议
+get <key>\r\n
+其中key为消息队列的名称。
+4 Mqagent的程序实现
+4.1 配置文件
+[General]
+#max keep alive connections for one memcached server 
+maxidle=20
+
+#max connection from  all clients
+maxconns=4096
+
+#mqagent port;
+port=11215
+
+#use ketama consistence hash 
+useketama=true
+
+#daemon mode
+daemon_mode=true
+
+#logfile
+logdir=/home/saint
+
+[tasks]
+sync_pre_process = 127.0.0.1:22201,127.0.0.1:22203
+advance_sync_pre_process = 127.0.0.1:22201,127.0.0.1:22203
+sync_link_deal = 127.0.0.1:22202
+davance_sync_link_deal = 127.0.0.1:22204
+其中配置文件中【General】模块是继承了magent来实现的，而【tasks】模块是mqagent独有的，主要配置 消息队列的名称和后端memcacheq之间的映射关系。
+4.2 设计原理	
+读取配置文件，将每一个tasks的item，作为一个key-value键值对存入到hash table中，使用者通过传递进来的mq_name就可以知道要使用哪些后端的机器。
+Set命令，key中的task_name，如果key不包含jid，则根据时间和task_name生成的值执行一致性hash算法，寻找后端的memcacheq。如果含有jid则对jid进行一致性hash计算得到后端memcacheq服务器的地址。依据memcache协议，重写set命令，传递到真正的memcacheq服务器中去。
+Get命令，相对比较简单，使用的是round-robin算法，每个get传入的key值为消息队列的名称。通过key找到hash table中的后端的memcacheq group，然后轮询的执行get命令
+5 客户端编写示例(c)
+1、仅支持memcached的协议下的get，set命令。
+2、Get相对于队列的pop操作，set相当于队列的push操作。
+3、可以借助现有的memcached的client的库来实现。
+#include "mt.h"
+#include<stdio.h>
+#include<string.h>
+#include<stdlib.h>
+#include<sys/types.h>
+#include<libmemcached/memcached.h>
+int main(int argc,char *argv[])
+{
+
+    if(0)
+    {
+        fprintf(stderr,"Usage:%s %s %s",argv[0],"hostname","port");
+        exit(1);
+    }   
+    memcached_st *memc;
+    memcached_return rc;
+    memcached_server_st *servers;
+    
+    memc = memcached_create(NULL);
+
+    memcached_behavior_set(memc,MEMCACHED_BEHAVIOR_KETAMA,1);
+    servers = memcached_server_list_append_with_weight(NULL,"localhost",11215,1,&rc);
+
+    rc = memcached_server_push(memc,servers);
+    memcached_server_free(servers);
+    if(rc == MEMCACHED_SUCCESS)
+        fprintf(stdout,"puse success\n");
+    char *key = "sync_pre_process/wangminghua1126@sina.com";
+    size_t lenval,rtv;
+    uint32_t rtf;
+
+    char *val10 = "0,0,sync_link_deal.gozap.com,sync_feed.gozap.com,king@gozap.com,liwei@gozap.com,<Data><eventDataId>0</eventDataId><eventAction>add</eventAction><CONN_guid action = \"add\">3</CONN_guid></Data>";
+    
+    int count = 0 ;
+    while(++ count)
+    { 
+    //sleep(1); 
+    printf("int %d\n",count);
+    rc = memcached_set(memc,key,strlen(key),val10,strlen(val10),(time_t)0,(uint32_t)0);
+    if(rc !=  MEMCACHED_SUCCESS)
+        printf("errno %d, %s \n",rc, memcached_strerror(NULL,rc));
+    else 
+        printf("success...\n");
+    
+    }
+
+    memcached_free(memc);   
+}
+6 地址
+http://svn.gozap.com/svn/mqagent
+
+
+	
+7 TODO
+1、 对修改配置后，发送reload信号的处理，目前只是支持了添加消息队列，对于消息队列的删除，及消息队列内部的更改，还没有完成。
+
