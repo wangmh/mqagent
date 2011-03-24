@@ -477,6 +477,7 @@ static void server_error(conn *c, const char *s) {
 	list_free(c->request, 1);
 	list_free(c->response, 1);
 	out_string(c, s);
+	c->state = CLIENT_COMMAND;
 }
 /* return 0 if ok, return 1 if failed */
 static int socket_connect(struct server *s) {
