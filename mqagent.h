@@ -29,6 +29,7 @@
 #define MAX_TOKENS 8
 #define COMMAND_TOKEN 0
 #define KEY_TOKEN 1
+#define FLAGS_TOKEN 2
 #define BYTES_TOKEN 4
 #define KEY_MAX_LENGTH 250
 #define BUFFER_PIECE_SIZE 16
@@ -121,6 +122,7 @@ struct conn {
 	struct event ev;
 	int ev_flags;
 	GString *content;
+	char flags[10];
 
 	/* command buffer */
 	char line[BUFFERLEN+1];

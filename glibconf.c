@@ -11,6 +11,7 @@
 #include <glib.h>
 #include "config.h"
 #include <error.h>
+#include "log.h"
 
 
 static GKeyFile *load_config(const char *file)
@@ -95,7 +96,26 @@ static void init_general_config(GKeyFile *keyfile)
 		glob_config->host_ip = NULL;
 		g_clear_error(&err);
 	}
-
+	
+   char *log_level = g_key_file_get_string(keyfile, "General",
+                "log_level", &err);
+    if (err)
+    {
+        glob_config->log_level = L_INFO;
+        g_clear_error(&err);
+    }
+    if(strcasecmp(log_level,"L_INFO" )==0)
+    {
+        glob_config->log_level = L_INFO;
+    }
+    if(strcasecmp(log_level,"L_DEBUG" )==0)
+    {
+        glob_config->log_level = L_DEBUG;
+    }
+    if(strcasecmp(log_level,"L_ERROR" )==0)
+    {
+        glob_config->log_level = L_ERR;
+    }
 
 
 }

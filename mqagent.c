@@ -1077,7 +1077,7 @@ static void rewrite_request(conn *c, list* l) {
 		free(content);
 	}
 	storebytes = c->content->len - 2;
-	g_string_append_printf(request, "set %s 0 0 %d\r\n%s", newkey, storebytes,
+	g_string_append_printf(request, "set %s %s 0 %d\r\n%s", newkey,c->flags,storebytes,
 			c->content->str);
 	jlog(L_INFO, "%s -> connection %s:%d", request->str, c->srv->owner->ip,
 			c->srv->owner->port);
@@ -1137,6 +1137,7 @@ static void process_command(conn *c) {
 	ntokens = tokenize_command(c->line, tokens, MAX_TOKENS);
 	if ((ntokens == 6 || ntokens == 7) && (strcmp(tokens[COMMAND_TOKEN].value,
 			"set") == 0)) {
+		
 		c->flag.is_set_cmd = 1;
 		c->storebytes = atol(tokens[BYTES_TOKEN].value);
 		c->storebytes += 2; /* \r\n */
@@ -1219,6 +1220,8 @@ static void process_command(conn *c) {
 				return;
 			}
 			c->keys[0] = strdup(tokens[KEY_TOKEN].value);
+			memset(c->flags,0, sizeof(c->flags));
+			snprintf(c->flags,sizeof(c->flags), "%s", tokens[FLAGS_TOKEN].value);
 		}
 	} else {
 		buffer_free(b);
@@ -1439,7 +1442,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 	init_config(config_file);
-	log_init(glob_config->logdir, L_INFO, LOG_PROGRAMME);
+	log_init(glob_config->logdir,  glob_config->log_level, LOG_PROGRAMME);
 	signal(SIGINT, signal_handler);
 	signal(SIGTERM, signal_handler);
 	signal(SIGHUP, signal_handler);

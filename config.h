@@ -35,6 +35,7 @@ typedef struct _config
 	bool daemon;
 	bool verbose_mode;
 	char *host_ip;
+	int log_level;
 
 } s_config;
 
